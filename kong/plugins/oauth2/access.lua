@@ -9,6 +9,7 @@ local url = require "socket.url"
 local Multipart = require "multipart"
 local string_find = string.find
 local req_get_headers = ngx.req.get_headers
+local check_https = utils.check_https
 
 local _M = {}
 
@@ -81,27 +82,6 @@ local function get_redirect_uri(client_id)
     end)
   end
   return client and client.redirect_uri or nil, client
-end
-
-local HTTPS = "https"
-
--- checks whether a request is https or was originally https (but already terminated)
--- @return boolean, or nil+error
-local function check_https(conf)
-  local result = ngx.var.scheme:lower() == HTTPS
-  if not result and conf.accept_http_if_already_terminated then
-    local forwarded_proto_header = ngx.req.get_headers()["x-forwarded-proto"]
-    if type(forwarded_proto_header) == "string" then 
-      result = forwarded_proto_header:lower() == HTTPS
-    else
-      if type(forwarded_proto_header) == "table" then
-        -- we could use the first entry (lower security), or check the contents of each of them (slow). So for now defensive, and error
-        -- out on multiple entries for the x-forwarded-proto header.
-        return nil, "Only one X-Forwarded-Proto header allowed"
-      end
-    end
-  end
-  return result
 end
 
 local function retrieve_parameters()
