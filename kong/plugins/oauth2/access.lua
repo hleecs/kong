@@ -51,7 +51,7 @@ local function generate_token(conf, credential, authenticated_userid, scope, sta
     expires_in = token_expiration,
     refresh_token = refresh_token,
     scope = scope
-  }, {ttl = token_expiration > 0 and 1209600 or nil}) -- Access tokens (and their associated refresh token) are being 
+  }, {ttl = token_expiration > 0 and 1209600 or nil}) -- Access tokens (and their associated refresh token) are being
                                                       -- permanently deleted after 14 days (1209600 seconds)
 
   if err then
@@ -86,7 +86,6 @@ end
 
 local function retrieve_parameters()
   ngx.req.read_body()
-  
   -- OAuth2 parameters could be in both the querystring or body
   local body_parameters
   local content_type = req_get_headers()[CONTENT_TYPE]
@@ -121,7 +120,7 @@ local function authorize(conf)
   local response_params = {}
   local parameters = retrieve_parameters()
   local state = parameters[STATE]
-  local redirect_uri, client, parsed_redirect_uri
+  local allowed_redirect_uris, client, redirect_uri, parsed_redirect_uri
 
   local is_https, err = check_https(conf)
   if not is_https then
@@ -145,19 +144,21 @@ local function authorize(conf)
       end
 
       -- Check client_id and redirect_uri
-      redirect_uri, client = get_redirect_uri(parameters[CLIENT_ID])
-      parsed_redirect_uri = url.parse(redirect_uri)
-      if not redirect_uri then
-        response_params = {[ERROR] = "invalid_client", error_description = "Invalid client authentication"}
-      elseif not parsed_redirect_uri then
-        response_params = {[ERROR] = "invalid_request", error_description = "Invalid "..REDIRECT_URI }
-        redirect_uri = nil
-      elseif parsed_redirect_uri.fragment ~= nil then
-        response_params = {[ERROR] = "invalid_request", error_description = "Fragment not allowed in "..REDIRECT_URI }
-        redirect_uri = nil
-      elseif parameters[REDIRECT_URI] and parameters[REDIRECT_URI] ~= redirect_uri then
-        response_params = {[ERROR] = "invalid_request", error_description = "Invalid "..REDIRECT_URI.." that does not match with the one created with the application"}
+      allowed_redirect_uris, client = get_redirect_uri(parameters[CLIENT_ID])
+
+      if not allowed_redirect_uris then
+        response_params = {[ERROR] = "invalid_client", error_description = "Invalid client authentication" }
+      else
+        redirect_uri = parameters[REDIRECT_URI] and parameters[REDIRECT_URI] or allowed_redirect_uris[1]
+
+        if not utils.table_contains(allowed_redirect_uris, redirect_uri) then
+          response_params = {[ERROR] = "invalid_request", error_description = "Invalid "..REDIRECT_URI.. " that does not match with any redirect_uri created with the application" }
+          -- redirect_uri used in this case is the first one registered with the application
+          redirect_uri = allowed_redirect_uris[1]
+        end
       end
+
+      parsed_redirect_uri = url.parse(redirect_uri)
 
       -- If there are no errors, keep processing the request
       if not response_params[ERROR] then
@@ -328,7 +329,7 @@ local function issue_token(conf)
   response_params.state = state
 
   -- Sending response in JSON format
-  return responses.send(response_params[ERROR] and (invalid_client_properties and invalid_client_properties.status or 400) 
+  return responses.send(response_params[ERROR] and (invalid_client_properties and invalid_client_properties.status or 400)
                         or 200, response_params, false, {
     ["cache-control"] = "no-store",
     ["pragma"] = "no-cache",
