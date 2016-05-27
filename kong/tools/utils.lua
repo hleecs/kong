@@ -124,7 +124,6 @@ end
 -- @param allow_terminated if truthy, the `X-Forwarded-Proto` header will be checked as well. 
 -- @return boolean or nil+error in case the header exists multiple times
 _M.check_https = function(allow_terminated)
-  
   if ngx.var.scheme:lower() == "https" then
     return true
   end
